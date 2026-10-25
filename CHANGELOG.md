@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-25
+
 ### Added
 
 - MinIO server or cluster in Gladys, read from its Prometheus metrics: online,
@@ -27,3 +29,6 @@ the notes of the version's GitHub Release.
 - Bearer token signed by the integration from the access key and secret key
   (no token to renew), or public metrics.
 - Texts and documentation in English, French, German and Spanish.
+
+[Unreleased]: https://github.com/guim31/gladys-minio/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/guim31/gladys-minio/releases/tag/v1.0.0
