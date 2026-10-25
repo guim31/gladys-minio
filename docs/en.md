@@ -1,61 +1,172 @@
-# Demo Devices Template
+# MinIO
 
-This is the user documentation of the integration. Gladys re-hosts this file
-and shows a permanent **Documentation** link to it in the Configuration screen
-(in the user's language, with English as the fallback) — it is when
-configuring that the user needs it most. Keep the short onboarding hints in
-the `section` blocks of the manifest `config_schema`; put the long
-step-by-step (screenshots, troubleshooting…) here.
+[MinIO](https://min.io/) is a self-hosted object storage server, compatible
+with Amazon S3. This integration brings a MinIO server or cluster into Gladys:
+its free space, its drives and nodes online or offline, its objects, and one
+device per bucket with its size. Scenes can react when MinIO stops answering,
+when a drive or a node goes offline, or when the free space gets low; a
+dashboard widget shows the capacity and the largest buckets. The integration
+only reads: it never writes to MinIO.
 
-## What you get
+Tested against a real MinIO RELEASE.2026-10-23 (built from the MinIO sources by
+Chainguard, a cluster of 4 nodes and a server with 4 drives, in Docker): a node
+stopped, a drive made unreadable, two drives lost (write quorum gone), the
+server stopped and started again. Also read a MinIO of May 2025. MinIO no longer
+publishes Docker images of its community edition since late 2025: the
+integration reads the metrics every MinIO version has offered for years, the
+way you install it does not matter. Not yet tested on a real Gladys: feedback
+welcome on [the issues](https://github.com/guim31/gladys-minio/issues).
 
-Six demo devices show up after installation: a weather station (real data
-from Open-Meteo), a switch, a dimmable light, a smart plug with power
-metering, a motion sensor and a camera.
+## What you need
 
-## Configuration
+- Gladys Assistant 5.1.0 or later.
+- A MinIO server or cluster reachable from the Gladys machine, on its **S3 API**
+  port (9000 by default), not on the port of its console (9001).
+- A MinIO user allowed to read the metrics (the `admin:Prometheus`
+  permission), or metrics opened to everyone with
+  `MINIO_PROMETHEUS_AUTH_TYPE=public`.
 
-1. Open the **Configuration** tab of the integration.
-2. Set the **latitude** and **longitude** the demo weather station should
-   observe (they default to Paris), and pick your temperature unit.
-   The **refresh interval** sets how often the weather station and the
-   plug's power are read: every 5 minutes by default, every minute at most.
-3. Save: the devices appear in the **Discovery** tab, ready to be added.
+The integration reads two pages of metrics every minute by default: light
+requests on your own network.
 
-The **Prefer the local connection** toggle drives the demo plug: it reports
-the channel it actually uses as a badge (local or cloud), with an orange dot
-when it runs degraded (local refused, cloud fallback).
+## Getting started
 
-## Actions
+### 1. Create a user that only reads the metrics
 
-- **Test the weather provider** — performs a live request to Open-Meteo and
-  shows the current temperature and humidity under the button.
-- **Identify a device** — pick one of your devices in the list and it will
-  signal itself (the demo light "blinks" in the logs).
+With the `mc` client, create a policy that only allows the metrics, a user,
+and attach the policy to it:
 
-## Scenes
+```
+cat > gladys-metrics.json <<'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [{ "Effect": "Allow", "Action": ["admin:Prometheus"], "Resource": ["arn:aws:s3:::*"] }]
+}
+EOF
+mc admin policy create myminio gladys-metrics gladys-metrics.json
+mc admin user add myminio gladys <a-long-secret-key>
+mc admin policy attach myminio gladys-metrics --user gladys
+```
 
-The integration adds its own cards to the scene editor (Gladys 5.1 or
-later), under the **Integrations** category:
+This user can neither read nor write a single object. You do not need to
+generate a token with `mc admin prometheus generate`: the integration signs its
+own, with the secret key, for each request.
 
-- **Motion detected** (trigger) — starts the scene when a demo motion sensor
-  sees something move. Optionally pick the sensor and what moved (person,
-  animal); left empty, any detection matches. The following actions can
-  read what moved with `{{triggerEvent.data.target}}`.
-- **Identify a device** (action) — makes the chosen device signal itself.
-  It returns whether the device could signal itself, so the following
-  actions can depend on it.
+### 2. Configure the integration
+
+In Gladys, open the MinIO integration and enter:
+
+- **MinIO address**: e.g. `http://192.168.1.2:9000`, or `https://s3.example.org`
+  behind a reverse proxy. A bare address uses port 9000.
+- **Access key** and **Secret key** of the user created above. Leave both empty
+  if the metrics are public.
+- **Accept a self-signed certificate** only for an `https://` address whose
+  certificate is not signed by a known authority.
+- **Refresh interval** (1 minute by default), **Low free space threshold (%)**
+  (10 % by default) and the **Language of the names**.
+
+**Test the connection** reads MinIO at once and answers in one line: version,
+free space, drives, buckets.
+
+On a cluster, any node will do, but the integration only sees what the node it
+reads sees: if that node stops, MinIO "no longer answers". Point it at a load
+balancer in front of the nodes when there is one.
+
+### 3. Add the devices
+
+In the **Discover** tab, add the **MinIO** server and the buckets you want to
+follow. Nothing is created without you.
+
+## The devices
+
+The **MinIO** device:
+
+- **Online**: 1 while MinIO answers.
+- **Healthy (write quorum)**: 1 while every erasure set has enough drives to
+  accept writes. At 0, MinIO refuses new objects.
+- **Version**: the RELEASE date of MinIO (the most recent one when the nodes
+  differ).
+- **Data stored**: the size of the objects (GB).
+- **Free space** and **Usable capacity**: after the erasure-coding parity (GB),
+  the figures `mc admin info` shows.
+- **Free space (%)**: free space out of the usable capacity.
+- **Objects** and **Buckets**.
+- **Drives online**, **Drives offline**, **Nodes offline**.
+- **Drives healing**: drives MinIO is rebuilding after a replacement.
+
+One device per bucket: **Size** (MB) and **Objects**. A bucket deleted in MinIO
+shows as unreachable in Gladys.
+
+MinIO computes the drives, the nodes and the capacity in the background: a
+lost drive shows within a minute or two. The objects and the sizes come from
+its scanner, which runs in the background too: on a fresh server they appear
+after its first pass, and they lag behind the uploads.
 
 ## Dashboard
 
-Add the **Demo status** widget to a dashboard: it shows the live
-temperature of the weather station and the power of the office plug, the
-connection the plug currently uses (orange when degraded) and the observed
-location. Its **Identify the light** button makes the demo light signal
-itself.
+The **MinIO** widget shows a gauge of the capacity used (green, orange near the
+threshold, red under it), the free space, the drives offline and the objects,
+then the buckets, the largest first, with their size and their objects (ten
+rows at most). Its settings choose the buckets to show (empty: all). The
+**Refresh** button reads MinIO again. When MinIO does not answer, or has lost
+its write quorum, the widget says so.
+
+## Scenes
+
+### Triggers
+
+- **MinIO no longer answers**: two reads in a row failed. Variables: server
+  address, reason.
+- **MinIO answers again**: with the downtime in minutes.
+- **MinIO drive offline**: more drives are offline than at the previous read.
+  When a whole node stops, its drives go with it: this trigger and the next
+  one both fire.
+- **MinIO drive back online**: fewer drives are offline.
+- **MinIO node offline** and **MinIO node back online**: the same for the
+  nodes of a cluster.
+- **MinIO free space low**: the free space went under the threshold of the
+  configuration. It fires again only after the free space climbed back one
+  point above the threshold.
+
+The drive, node and threshold triggers carry the counts (drives offline and
+online, nodes offline and online, free space). What was seen is kept by the
+integration: a drive lost while Gladys was restarting is still announced, once.
+
+### Actions
+
+- **State of MinIO**: reads MinIO for the next actions: online, healthy,
+  version, free space, objects, buckets, drives, and a ready-made sentence
+  ("MinIO: 400 GB free (40 %), 0 drive(s) offline."). When MinIO does not
+  answer, it says so instead of failing.
+- **State of a bucket**: the size and the objects of a bucket, and a sentence.
+
+### Scene ideas
+
+- **A drive is lost**: on "MinIO drive offline", send a message with the number
+  of drives offline, a variable of the trigger.
+- **Storage almost full**: on "MinIO free space low", send a message with the
+  free space and the threshold.
+- **Every Sunday**: at 10:00, "State of MinIO", then send its sentence.
 
 ## Troubleshooting
 
-The integration logs everything it does: check the integration logs from the
-Gladys UI (or `docker logs` on the host) with `LOG_LEVEL=debug` for the full
-detail.
+- **"Access refused"**: wrong access key or secret key, or the user lacks the
+  `admin:Prometheus` permission. MinIO gives the same answer for both.
+- **"No MinIO server at this address"**: the address is probably the one of
+  the console (9001): use the API port (9000 by default).
+- **"Certificate refused"**: tick "Accept a self-signed certificate", or use
+  the `http://` address.
+- **No objects, no bucket**: the scanner of MinIO has not finished its first
+  pass yet: wait a few minutes.
+- Detailed logs: `LOG_LEVEL=debug` on the container of the integration.
+
+## Limits
+
+- Reading only: no bucket is created, emptied or deleted from Gladys.
+- The counts of drives and nodes are those of the whole cluster: MinIO's
+  metrics do not tell which drive was lost (`mc admin info` does).
+- Sizes come from the scanner of MinIO and lag behind.
+- The integration has not been tested with S3-compatible replacements (Garage,
+  SeaweedFS): their metrics are different, they are not supported.
+- One MinIO server or cluster per installation of the integration.
+- Not affiliated with MinIO, Inc.

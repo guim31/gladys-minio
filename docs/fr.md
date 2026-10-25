@@ -1,67 +1,179 @@
-# Template de démonstration
+# MinIO
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+[MinIO](https://min.io/) est un serveur de stockage objet auto-hébergé,
+compatible avec Amazon S3. Cette intégration amène un serveur ou un cluster
+MinIO dans Gladys : son espace libre, ses disques et ses nœuds en ligne ou hors
+ligne, ses objets, et un appareil par bucket avec sa taille. Des scènes peuvent
+réagir quand MinIO ne répond plus, quand un disque ou un nœud passe hors ligne,
+ou quand l'espace libre baisse ; un widget de tableau de bord montre la
+capacité et les plus gros buckets. L'intégration ne fait que lire : elle
+n'écrit jamais dans MinIO.
 
-## Ce que vous obtenez
+Testée sur un vrai MinIO RELEASE.2026-10-23 (compilé depuis les sources de
+MinIO par Chainguard, un cluster de 4 nœuds et un serveur à 4 disques, en
+Docker) : un nœud arrêté, un disque rendu illisible, deux disques perdus
+(quorum d'écriture perdu), le serveur arrêté puis relancé. Lit aussi un MinIO
+de mai 2025. MinIO ne publie plus d'images Docker de son édition
+communautaire depuis fin 2025 : l'intégration lit les métriques que toutes les
+versions de MinIO proposent depuis des années, la façon de l'installer ne
+compte pas. Pas encore testée sur un vrai Gladys : vos retours sont les
+bienvenus dans [les issues](https://github.com/guim31/gladys-minio/issues).
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+## Ce qu'il faut
 
-## Configuration
+- Gladys Assistant 5.1.0 ou plus récent.
+- Un serveur ou un cluster MinIO joignable depuis la machine de Gladys, sur le
+  port de son **API S3** (9000 par défaut), pas sur celui de sa console (9001).
+- Un utilisateur MinIO autorisé à lire les métriques (le droit
+  `admin:Prometheus`), ou des métriques ouvertes à tous avec
+  `MINIO_PROMETHEUS_AUTH_TYPE=public`.
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+L'intégration lit deux pages de métriques toutes les minutes par défaut : des
+requêtes légères, sur votre propre réseau.
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+## Mise en route
 
-## Actions
+### 1. Créer un utilisateur qui ne lit que les métriques
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+Avec le client `mc`, créez une politique qui n'autorise que les métriques, un
+utilisateur, et attachez-lui la politique :
 
-## Scènes
+```
+cat > gladys-metrics.json <<'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [{ "Effect": "Allow", "Action": ["admin:Prometheus"], "Resource": ["arn:aws:s3:::*"] }]
+}
+EOF
+mc admin policy create myminio gladys-metrics gladys-metrics.json
+mc admin user add myminio gladys <une-longue-clé-secrète>
+mc admin policy attach myminio gladys-metrics --user gladys
+```
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+Cet utilisateur ne peut ni lire ni écrire le moindre objet. Inutile de générer
+un jeton avec `mc admin prometheus generate` : l'intégration signe le sien,
+avec la clé secrète, à chaque requête.
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+### 2. Configurer l'intégration
+
+Dans Gladys, ouvrez l'intégration MinIO et saisissez :
+
+- **Adresse de MinIO** : par ex. `http://192.168.1.2:9000`, ou
+  `https://s3.example.org` derrière un proxy inverse. Une adresse seule utilise
+  le port 9000.
+- **Clé d'accès** et **Clé secrète** de l'utilisateur créé plus haut. Laissez
+  les deux vides si les métriques sont publiques.
+- **Accepter un certificat auto-signé** seulement pour une adresse en
+  `https://` dont le certificat n'est pas signé par une autorité connue.
+- **Intervalle de rafraîchissement** (1 minute par défaut), **Seuil d'espace
+  libre bas (%)** (10 % par défaut) et la **Langue des noms**.
+
+**Tester la connexion** lit MinIO tout de suite et répond en une ligne :
+version, espace libre, disques, buckets.
+
+Sur un cluster, n'importe quel nœud convient, mais l'intégration ne voit que ce
+que voit le nœud qu'elle lit : si ce nœud s'arrête, MinIO « ne répond plus ».
+Visez plutôt un répartiteur de charge devant les nœuds quand il y en a un.
+
+### 3. Ajouter les appareils
+
+Dans l'onglet **Découverte**, ajoutez le serveur **MinIO** et les buckets à
+suivre. Rien n'est créé sans vous.
+
+## Les appareils
+
+L'appareil **MinIO** :
+
+- **En ligne** : 1 tant que MinIO répond.
+- **En bonne santé (quorum)** : 1 tant que chaque jeu d'effacement a assez de
+  disques pour accepter les écritures. À 0, MinIO refuse les nouveaux objets.
+- **Version** : la date de RELEASE de MinIO (la plus récente quand les nœuds
+  diffèrent).
+- **Données stockées** : la taille des objets (Go).
+- **Espace libre** et **Capacité utilisable** : après la parité du codage à
+  effacement (Go), les chiffres que montre `mc admin info`.
+- **Espace libre (%)** : l'espace libre rapporté à la capacité utilisable.
+- **Objets** et **Buckets**.
+- **Disques en ligne**, **Disques hors ligne**, **Nœuds hors ligne**.
+- **Disques en réparation** : les disques que MinIO reconstruit après un
+  remplacement.
+
+Un appareil par bucket : **Taille** (Mo) et **Objets**. Un bucket supprimé dans
+MinIO apparaît injoignable dans Gladys.
+
+MinIO calcule les disques, les nœuds et la capacité en arrière-plan : un disque
+perdu apparaît en une à deux minutes. Les objets et les tailles viennent de son
+scanner, qui tourne aussi en arrière-plan : sur un serveur neuf, ils
+apparaissent après son premier passage, et ils suivent les envois avec du
+retard.
 
 ## Tableau de bord
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+Le widget **MinIO** montre une jauge de la capacité utilisée (verte, orange à
+l'approche du seuil, rouge en dessous), l'espace libre, les disques hors ligne
+et les objets, puis les buckets, les plus gros d'abord, avec leur taille et
+leurs objets (dix lignes au plus). Ses réglages choisissent les buckets à
+montrer (vide : tous). Le bouton **Actualiser** relit MinIO. Quand MinIO ne
+répond pas, ou a perdu son quorum d'écriture, le widget le dit.
+
+## Scènes
+
+### Déclencheurs
+
+- **MinIO ne répond plus** : deux lectures de suite ont échoué. Variables :
+  adresse du serveur, raison.
+- **MinIO répond de nouveau** : avec la durée de l'interruption en minutes.
+- **Disque MinIO hors ligne** : plus de disques sont hors ligne qu'à la lecture
+  précédente. Quand un nœud entier s'arrête, ses disques partent avec lui : ce
+  déclencheur et le suivant partent tous les deux.
+- **Disque MinIO revenu** : moins de disques sont hors ligne.
+- **Nœud MinIO hors ligne** et **Nœud MinIO revenu** : la même chose pour les
+  nœuds d'un cluster.
+- **Espace libre MinIO bas** : l'espace libre est passé sous le seuil de la
+  configuration. Il ne se déclenche de nouveau qu'une fois l'espace libre
+  remonté d'un point au-dessus du seuil.
+
+Les déclencheurs de disque, de nœud et de seuil portent les comptes (disques
+hors ligne et en ligne, nœuds hors ligne et en ligne, espace libre). Ce qui a
+été vu est gardé par l'intégration : un disque perdu pendant un redémarrage de
+Gladys est quand même annoncé, une fois.
+
+### Actions
+
+- **État de MinIO** : lit MinIO pour les actions suivantes : en ligne, en bonne
+  santé, version, espace libre, objets, buckets, disques, et une phrase toute
+  prête (« MinIO : 400 GB libres (40 %), 0 disque(s) hors ligne. »). Quand
+  MinIO ne répond pas, elle le dit au lieu d'échouer.
+- **État d'un bucket** : la taille et les objets d'un bucket, et une phrase.
+
+### Idées de scènes
+
+- **Un disque tombe** : sur « Disque MinIO hors ligne », envoyer un message
+  avec le nombre de disques hors ligne, une variable du déclencheur.
+- **Stockage presque plein** : sur « Espace libre MinIO bas », envoyer un
+  message avec l'espace libre et le seuil.
+- **Chaque dimanche** : à 10 h, « État de MinIO », puis envoyer sa phrase.
 
 ## Dépannage
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+- **« Accès refusé »** : clé d'accès ou clé secrète fausse, ou l'utilisateur
+  n'a pas le droit `admin:Prometheus`. MinIO répond la même chose dans les deux
+  cas.
+- **« Aucun serveur MinIO à cette adresse »** : l'adresse est sans doute celle
+  de la console (9001) : utilisez le port de l'API (9000 par défaut).
+- **« Certificat refusé »** : cochez « Accepter un certificat auto-signé », ou
+  utilisez l'adresse en `http://`.
+- **Ni objets ni buckets** : le scanner de MinIO n'a pas fini son premier
+  passage : patientez quelques minutes.
+- Journaux détaillés : `LOG_LEVEL=debug` sur le conteneur de l'intégration.
+
+## Limites
+
+- Lecture seule : aucun bucket n'est créé, vidé ou supprimé depuis Gladys.
+- Les comptes de disques et de nœuds sont ceux de tout le cluster : les
+  métriques de MinIO ne disent pas quel disque est tombé (`mc admin info`, si).
+- Les tailles viennent du scanner de MinIO et suivent avec du retard.
+- L'intégration n'a pas été testée avec les remplaçants compatibles S3 (Garage,
+  SeaweedFS) : leurs métriques diffèrent, ils ne sont pas pris en charge.
+- Un serveur ou cluster MinIO par installation de l'intégration.
+- Sans lien avec MinIO, Inc.

@@ -30,6 +30,22 @@ Gladys before reporting a problem.
 
 In scope: the code of this repository and the Docker image it publishes.
 
+What the integration handles:
+
+- the **access key and secret key** of a MinIO user, stored by Gladys in the
+  integration configuration (never written to `/data`, never logged). The
+  secret key never leaves the container: it signs a short-lived bearer token
+  (one hour) for each metrics request, sent only to the address configured;
+  redirects are not followed. A user restricted to the `admin:Prometheus`
+  permission is recommended: it cannot read or write any object;
+- an option to accept a self-signed certificate (TLS without verification of
+  the authority), off by default;
+- `/data/minio-state.json`: the address of the server, the numbers of drives
+  and nodes last seen offline, and whether the free space was under the
+  threshold (no secret);
+- network: HTTP(S) GET requests to the two metrics pages of MinIO, nothing
+  else; no port is opened. The integration never writes to MinIO.
+
 Out of scope: Gladys Assistant itself (see its
 [security policy](https://github.com/GladysAssistant/Gladys/security/policy)),
-and the third-party services and devices the integration talks to.
+and MinIO itself.

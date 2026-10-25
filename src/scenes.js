@@ -1,41 +1,77 @@
 // -----------------------------------------------------------------------------
-// Scene actions (SDK v0.14+, Gladys 5.1+).
+// Scene action handlers (manifest `scene_actions`, Gladys 5.1+). Reading only:
+// the integration never writes to MinIO.
 //
-// A scene action is an OPERATION a scene author places in a scene, with
-// parameters and a result: "identify this device", "take a snapshot", "clean
-// these rooms". Each one is declared in the manifest `scene_actions` field
-// (key, label, `fields` in the config_schema grammar, scalar `outputs`) and
-// handled here, keyed by that same `key`; index.js registers every entry with
-// `gladys.onSceneAction(key, ...)`.
-//
-// Scene TRIGGERS are the other direction ("this happened"): they are fired by
-// the device that observes the event, see src/devices/motionSensor.js.
-//
-// The rules that matter:
-//   - `fields` arrive RESOLVED: scene variables substituted, defaults applied,
-//     validated by the core; a `"source": "devices"` field is the chosen
-//     device external_id;
-//   - resolve an object of the declared `outputs` (scalars only), readable by
-//     the following actions of the scene, or `undefined` for none. Keys not
-//     declared in the manifest are dropped by the core;
-//   - throwing fails THIS action only: the scene logs it and continues. A
-//     scene action is never a condition: return an output and let the scene
-//     author gate on it;
-//   - never fire a scene event as a consequence of a received action: a scene
-//     bound to that event would loop through the integration.
+// "Is a drive offline?" is already a scene condition on the device features.
+// The reading actions are about what a condition cannot do: put the state in
+// a message ("MinIO: 64 GB free (6.7 %), 1 drive(s) offline."), and work on a
+// server whose device is not added. They read MinIO again when the last read
+// is older than 15 seconds.
 // -----------------------------------------------------------------------------
 
-import { createLogger } from '@gladysassistant/integration-sdk';
-import { signalDevice } from './devices/index.js';
+import { freePercent } from './devices.js';
+import { SENTENCE_TEXT, formatBytes, formatPercent } from './texts.js';
 
-const logger = createLogger({ name: 'scenes' });
+const words = (language) => SENTENCE_TEXT[language] ?? SENTENCE_TEXT.en;
 
 export const SCENE_ACTIONS = {
-  // The ack is awaited under the action's `timeout_seconds` (15 s in the
-  // manifest), counted from the moment the scene reaches the action.
-  async identify_device(gladys, { fields, config }) {
-    logger.info(`Scene action identify_device <- ${fields.device}`);
-    const signalled = await signalDevice(gladys, fields.device, config);
-    return { signalled };
+  async get_server_status(hub) {
+    await hub.freshView();
+    const language = hub.config.language;
+    const cluster = hub.isDown() ? null : hub.cluster;
+    if (!cluster) {
+      return {
+        online: false,
+        healthy: false,
+        version: '',
+        free_percent: -1,
+        free_space: '',
+        used_space: '',
+        total_space: '',
+        objects: -1,
+        buckets: -1,
+        drives_online: -1,
+        drives_offline: -1,
+        nodes_offline: -1,
+        healing_drives: -1,
+        sentence: words(language).unreachable,
+      };
+    }
+    const percent = freePercent(cluster);
+    const free = formatBytes(cluster.freeBytes, language);
+    const count = (value) => value ?? -1;
+    return {
+      online: true,
+      healthy: cluster.healthy !== 0,
+      version: cluster.version ?? '',
+      free_percent: percent ?? -1,
+      free_space: cluster.freeBytes === null ? '' : free,
+      used_space: cluster.usedBytes === null ? '' : formatBytes(cluster.usedBytes, language),
+      total_space: cluster.totalBytes === null ? '' : formatBytes(cluster.totalBytes, language),
+      objects: count(cluster.objects),
+      buckets: count(cluster.buckets),
+      drives_online: count(cluster.drivesOnline),
+      drives_offline: count(cluster.drivesOffline),
+      nodes_offline: count(cluster.nodesOffline),
+      healing_drives: count(cluster.healingDrives),
+      sentence: words(language).server(
+        free,
+        formatPercent(percent, language),
+        cluster.drivesOffline ?? 0,
+      ),
+    };
+  },
+
+  async get_bucket_status(hub, { fields = {} }) {
+    const bucket = await hub.bucketOf(fields.device);
+    const language = hub.config.language;
+    const size = formatBytes(bucket.sizeBytes, language);
+    return {
+      name: bucket.name,
+      size,
+      size_mb: bucket.sizeBytes === null ? -1 : Math.round(bucket.sizeBytes / 1e6),
+      objects: bucket.objects ?? -1,
+      sentence: words(language).bucket(bucket.name, size, bucket.objects ?? 0),
+    };
   },
 };
