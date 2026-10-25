@@ -74,6 +74,9 @@ const OUTAGE_KINDS = new Set([ERROR_KINDS.UNREACHABLE, ERROR_KINDS.HTTP]);
 
 const MAX_TRANSPORTS_PER_REQUEST = 100;
 
+/** Free space under the threshold: the trigger and the widget use this one rule. */
+export const isLowSpace = (percent, threshold) => percent < threshold;
+
 export class MinioHub {
   /**
    * @param {object} options
@@ -104,7 +107,6 @@ export class MinioHub {
     this.error = null;
     this.failures = 0;
     this.downSince = null;
-    this.downAnnounced = false;
     this.polling = null;
     this.transports = new Map();
     this.connection = null;
@@ -169,8 +171,9 @@ export class MinioHub {
       this.readAt = 0;
       this.error = null;
       this.failures = 0;
-      this.downSince = null;
-      this.downAnnounced = false;
+      // An outage already announced (kept in /data, cleared above for another
+      // server) still waits for its "answers again".
+      this.downSince = this.saved.down?.since ?? null;
       this.polling = null;
     }
     if (languageChanged) {
@@ -180,6 +183,7 @@ export class MinioHub {
     if (thresholdChanged) {
       // A new threshold is not an event: the state under it is only recorded.
       delete this.saved.lowSpace;
+      this.store.save(this.saved);
     }
     try {
       if (this.client) {
@@ -275,22 +279,37 @@ export class MinioHub {
           `${cluster.drivesOnline ?? '?'} drive(s) online, ${buckets.length} bucket(s)`,
       );
     }
-    if (this.downAnnounced) {
-      await this.fire(TRIGGERS.RECOVERED, {
-        downtime_minutes: Math.max(0, Math.round((now - this.downSince) / 60_000)),
-      });
+    // Every state change first, without await: a reconfiguration during the
+    // scene events below cannot mix two servers.
+    const events = [];
+    let dirty = false;
+    if (this.saved.down) {
+      const since = this.saved.down.since ?? now;
+      events.push([
+        TRIGGERS.RECOVERED,
+        { downtime_minutes: Math.max(0, Math.round((now - since) / 60_000)) },
+      ]);
+      delete this.saved.down;
+      dirty = true;
     }
     this.error = null;
     this.failures = 0;
     this.downSince = null;
-    this.downAnnounced = false;
     this.readAt = now;
     this.cluster = cluster;
-    this.buckets = new Map(buckets.map((bucket) => [bucket.name, bucket]));
-    if (await this.transition(cluster)) {
+    // No bucket metric while the cluster says there are buckets (or does not
+    // know yet): the scanner has not answered, keep what was read before.
+    if (buckets.length > 0 || cluster.buckets === 0) {
+      this.buckets = new Map(buckets.map((bucket) => [bucket.name, bucket]));
+    }
+    dirty = this.transition(cluster, events) || dirty;
+    if (dirty) {
       this.saved.url = this.config.url;
       // Written only when something changed: no wear of the SD card at every read.
       this.store.save(this.saved);
+    }
+    for (const [key, data] of events) {
+      await this.fire(key, data);
     }
     await this.publishStates();
   }
@@ -304,12 +323,16 @@ export class MinioHub {
       logger.warn(`MinIO: ${err.message}`);
     }
     if (!OUTAGE_KINDS.has(err.kind)) {
+      // A configuration problem breaks the series of failures in a row.
+      this.failures = 0;
       return;
     }
     this.failures += 1;
     this.downSince ??= now;
-    if (this.failures === FAILURES_BEFORE_UNREACHABLE && !this.downAnnounced) {
-      this.downAnnounced = true;
+    if (this.failures >= FAILURES_BEFORE_UNREACHABLE && !this.saved.down) {
+      this.saved.down = { since: this.downSince };
+      this.saved.url = this.config.url;
+      this.store.save(this.saved);
       logger.info('MinIO no longer answers');
       await this.fire(TRIGGERS.UNREACHABLE, {
         error: pick(ERROR_TEXT[err.kind], this.config.language),
@@ -319,12 +342,12 @@ export class MinioHub {
   }
 
   /**
-   * Compare the cluster with what was seen before and fire the scene events
-   * of drives and nodes going offline or back, and of the free space going
-   * under the threshold. The first sight only records.
+   * Compare the cluster with what was seen before and queue in `events` the
+   * scene events of drives and nodes going offline or back, and of the free
+   * space going under the threshold. The first sight only records.
    * @returns {boolean} whether the saved state changed
    */
-  async transition(cluster) {
+  transition(cluster, events) {
     let dirty = false;
     const counts = [
       ['drivesOffline', TRIGGERS.DRIVE_OFFLINE, TRIGGERS.DRIVE_RECOVERED, 'drive'],
@@ -341,7 +364,7 @@ export class MinioHub {
       }
       if (typeof previous === 'number') {
         logger.info(`MinIO: ${value} ${what}(s) offline (was ${previous})`);
-        await this.fire(value > previous ? offline : recovered, this.countVariables(cluster));
+        events.push([value > previous ? offline : recovered, this.countVariables(cluster)]);
       }
       this.saved[key] = value;
       dirty = true;
@@ -350,17 +373,20 @@ export class MinioHub {
     const percent = freePercent(cluster);
     if (percent !== null) {
       const threshold = this.config.lowSpacePercent;
-      const below = percent < threshold;
+      const below = isLowSpace(percent, threshold);
       if (typeof this.saved.lowSpace !== 'boolean') {
         this.saved.lowSpace = below;
         dirty = true;
       } else if (!this.saved.lowSpace && below) {
         logger.info(`MinIO: free space ${percent} % under ${threshold} %`);
-        await this.fire(TRIGGERS.LOW_SPACE, {
-          free_percent: percent,
-          free_space: formatBytes(cluster.freeBytes, this.config.language),
-          threshold,
-        });
+        events.push([
+          TRIGGERS.LOW_SPACE,
+          {
+            free_percent: percent,
+            free_space: formatBytes(cluster.freeBytes, this.config.language),
+            threshold,
+          },
+        ]);
         this.saved.lowSpace = true;
         dirty = true;
       } else if (this.saved.lowSpace && percent >= threshold + LOW_SPACE_HYSTERESIS) {
@@ -504,6 +530,7 @@ export class MinioHub {
     // The widget is pulled again only when what it shows changed.
     const key = JSON.stringify([
       this.error?.kind ?? null,
+      this.config.lowSpacePercent,
       this.cluster && freePercent(this.cluster),
       this.cluster?.drivesOffline,
       this.cluster?.nodesOffline,
@@ -522,18 +549,21 @@ export class MinioHub {
    * answer, or the bucket no longer exists).
    */
   async publishTransports() {
-    if (!this.client || this.readAt === 0) {
+    // Not read yet: nothing to say. No usable configuration: every added
+    // device is unreachable, not frozen on its last badge.
+    if (this.client && this.readAt === 0) {
       return;
     }
+    const usable = Boolean(this.client) && !this.error;
     const prefix = bucketIds(this.gladys, '').device;
     const entries = [];
     for (const device of this.gladys.devices ?? []) {
       const externalId = device.external_id;
       let reachable;
       if (externalId === serverIds(this.gladys).device) {
-        reachable = !this.error;
+        reachable = usable;
       } else if (typeof externalId === 'string' && externalId.startsWith(prefix)) {
-        reachable = !this.error && this.buckets.has(parseBucketName(this.gladys, externalId));
+        reachable = usable && this.buckets.has(parseBucketName(this.gladys, externalId));
       } else {
         continue;
       }
@@ -638,6 +668,11 @@ export class MinioHub {
         continue;
       }
       const parts = [text.ok];
+      if (!cluster) {
+        // The configuration changed during the test: the new read is not done.
+        message[language] = labelled('MinIO', parts.join(', '), language);
+        continue;
+      }
       if (cluster.version) {
         parts.push(text.version(cluster.version));
       }

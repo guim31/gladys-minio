@@ -18,7 +18,7 @@
 
 import { WIDGET_COLORS } from '@gladysassistant/integration-sdk';
 import { freePercent } from './devices.js';
-import { WIDGET_KEY } from './hub.js';
+import { WIDGET_KEY, isLowSpace } from './hub.js';
 import { ERROR_TEXT, formatBytes, pick } from './texts.js';
 
 // Action key of the button: permanent once published.
@@ -45,7 +45,7 @@ export const TEXT = {
     en: 'Drives offline',
     fr: 'Disques hors ligne',
     de: 'Laufwerke offline',
-    es: 'Discos desconectados',
+    es: 'Discos fuera de línea',
   },
   objects: { en: 'Objects', fr: 'Objets', de: 'Objekte', es: 'Objetos' },
   objectCount: {
@@ -88,16 +88,18 @@ export const sortBuckets = (buckets) =>
     (a, b) => (b.sizeBytes ?? -1) - (a.sizeBytes ?? -1) || a.name.localeCompare(b.name),
   );
 
-function usedColor(percentUsed, threshold) {
-  if (percentUsed >= 100 - threshold) {
+function usedColor(free, threshold) {
+  if (isLowSpace(free, threshold)) {
     return WIDGET_COLORS.DANGER;
   }
-  return percentUsed >= 100 - 2 * threshold ? WIDGET_COLORS.WARNING : WIDGET_COLORS.SUCCESS;
+  return isLowSpace(free, 2 * threshold) ? WIDGET_COLORS.WARNING : WIDGET_COLORS.SUCCESS;
 }
 
 async function get(hub, { settings, language = 'en' }) {
   if (!hub.client) {
-    return message(TEXT.pick, language);
+    // No address, an address not understood or a secret key missing: say which.
+    const status = hub.connectionStatus();
+    return message(status.connected ? TEXT.pick : status.message, language);
   }
   const cluster = hub.error ? null : hub.cluster;
   const components = [];
@@ -111,14 +113,16 @@ async function get(hub, { settings, language = 'en' }) {
       max: 100,
       unit: '%',
       label: pick(TEXT.used, language),
-      color: usedColor(used, hub.config.lowSpacePercent),
+      color: usedColor(free, hub.config.lowSpacePercent),
     });
     components.push({
       type: 'value',
       value: fit(formatBytes(cluster.freeBytes, language), 12),
       label: pick(TEXT.free, language),
       icon: 'hard-drive',
-      color: free < hub.config.lowSpacePercent ? WIDGET_COLORS.DANGER : WIDGET_COLORS.NEUTRAL,
+      color: isLowSpace(free, hub.config.lowSpacePercent)
+        ? WIDGET_COLORS.DANGER
+        : WIDGET_COLORS.NEUTRAL,
     });
   }
   if (cluster && cluster.drivesOffline !== null) {
@@ -190,7 +194,8 @@ async function action(hub, { actionKey }) {
   if (actionKey !== ACTIONS.REFRESH) {
     throw new Error(`Unknown action ${actionKey}`);
   }
-  await hub.pollNow();
+  // Taps in a row read MinIO once: a failure counts once toward "no longer answers".
+  await hub.refreshIfStale();
   if (hub.error) {
     return { message: ERROR_TEXT[hub.error.kind] };
   }

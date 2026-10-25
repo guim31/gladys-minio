@@ -42,7 +42,7 @@ export const SCENE_ACTIONS = {
     const count = (value) => value ?? -1;
     return {
       online: true,
-      healthy: cluster.healthy !== 0,
+      healthy: cluster.healthy === 1,
       version: cluster.version ?? '',
       free_percent: percent ?? -1,
       free_space: cluster.freeBytes === null ? '' : free,
@@ -54,11 +54,10 @@ export const SCENE_ACTIONS = {
       drives_offline: count(cluster.drivesOffline),
       nodes_offline: count(cluster.nodesOffline),
       healing_drives: count(cluster.healingDrives),
-      sentence: words(language).server(
-        free,
-        formatPercent(percent, language),
-        cluster.drivesOffline ?? 0,
-      ),
+      sentence:
+        percent === null || cluster.drivesOffline === null
+          ? words(language).online
+          : words(language).server(free, formatPercent(percent, language), cluster.drivesOffline),
     };
   },
 
@@ -71,7 +70,10 @@ export const SCENE_ACTIONS = {
       size,
       size_mb: bucket.sizeBytes === null ? -1 : Math.round(bucket.sizeBytes / 1e6),
       objects: bucket.objects ?? -1,
-      sentence: words(language).bucket(bucket.name, size, bucket.objects ?? 0),
+      sentence:
+        bucket.sizeBytes === null || bucket.objects === null
+          ? words(language).bucketUnknown(bucket.name)
+          : words(language).bucket(bucket.name, size, bucket.objects),
     };
   },
 };

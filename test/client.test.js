@@ -186,3 +186,21 @@ test('the threshold: integers, a comma, bounds, default', () => {
   assert.equal(config.pollIntervalMs, 60_000);
   assert.equal(config.language, 'fr');
 });
+
+test('a reverse proxy sub-path named /minio is kept', () => {
+  assert.equal(parseServerUrl('https://example.org/minio'), 'https://example.org/minio');
+  assert.equal(
+    parseServerUrl('https://example.org/minio/minio/v2/metrics/cluster'),
+    'https://example.org/minio',
+  );
+});
+
+test('an answer too large is not an outage', async () => {
+  const client = new MinioClient({
+    url: 'http://192.0.2.10:9000',
+    request: async () => {
+      throw Object.assign(new Error('Response too large'), { code: 'TOO_LARGE' });
+    },
+  });
+  await assert.rejects(client.read(), (err) => err.kind === ERROR_KINDS.TOO_LARGE);
+});

@@ -288,8 +288,9 @@ test('the widget: gauge, tiles, buckets largest first, within the budget', async
     ['text', 'button'],
   );
 
-  // The Refresh button reads again.
+  // The Refresh button reads again (once the last read is 15 seconds old).
   world.minio.down = false;
+  world.clock.advance(MINUTE);
   const refreshed = await world.fake.widgetAction(WIDGET_KEY, 'refresh');
   assert.equal(refreshed.success, true, refreshed.error);
   assert.equal(world.hub.error, null);
@@ -439,4 +440,96 @@ test('the language of the names follows the configuration', async (t) => {
   const server = world.fake.discoveredDevices[0];
   assert.deepEqual(server, buildServerDevice(world.gladys, 'de'));
   assert.ok(server.features.some((feature) => feature.name === 'Laufwerke offline'));
+});
+
+test('an outage announced before a restart gets its "answers again" after it', async (t) => {
+  const clock = createClock();
+  const minio = new FakeMinio({ now: clock.now });
+  const first = await createWorld({ clock, minio });
+  minio.down = true;
+  await first.hub.pollNow();
+  clock.advance(MINUTE);
+  await first.hub.pollNow();
+  assert.equal(events(first, TRIGGERS.UNREACHABLE).length, 1);
+  await first.app.stop();
+
+  // Still down at restart: not announced twice.
+  const second = await createWorld({ clock, minio, dataDir: first.dataDir });
+  await second.hub.pollNow();
+  await second.hub.pollNow();
+  assert.equal(events(second, TRIGGERS.UNREACHABLE).length, 0);
+  await second.app.stop();
+
+  minio.down = false;
+  clock.advance(9 * MINUTE);
+  const third = await createWorld({ clock, minio, dataDir: first.dataDir });
+  t.after(() => third.app.stop());
+  const back = events(third, TRIGGERS.RECOVERED);
+  assert.equal(back.length, 1);
+  assert.equal(back[0].data.downtime_minutes, 10);
+});
+
+test('new keys during an outage keep the pending "answers again"', async (t) => {
+  const world = await createWorld();
+  t.after(() => world.app.stop());
+  world.minio.down = true;
+  await world.hub.pollNow();
+  await world.hub.pollNow();
+  await world.fake.configUpdated({
+    url: BASE,
+    access_key: ACCESS_KEY,
+    secret_key: SECRET_KEY,
+    accept_self_signed: true,
+    language: 'en',
+  });
+  world.minio.down = false;
+  await world.hub.pollNow();
+  assert.equal(events(world, TRIGGERS.RECOVERED).length, 1);
+});
+
+test('a configuration error breaks the series of failures', async (t) => {
+  const world = await createWorld();
+  t.after(() => world.app.stop());
+  world.minio.down = true;
+  await world.hub.pollNow();
+  world.minio.down = false;
+  world.minio.status = 403;
+  await world.hub.pollNow();
+  world.minio.status = null;
+  world.minio.down = true;
+  await world.hub.pollNow();
+  assert.equal(events(world, TRIGGERS.UNREACHABLE).length, 0);
+});
+
+test('a bucket page without metric keeps the buckets known', async (t) => {
+  const world = await createWorld();
+  t.after(() => world.app.stop());
+  await createDevices(world);
+  const saved = world.minio.bucketText;
+  world.minio.bucketText = () => '# HELP nothing yet\n';
+  await world.hub.pollNow();
+  world.minio.bucketText = saved;
+  assert.equal(world.hub.buckets.size, 3);
+  assert.ok(world.fake.transports.every((entry) => entry.transport === 'local'));
+});
+
+test('scene sentences never turn an unknown figure into 0', async (t) => {
+  const world = await createWorld({ connect: false });
+  world.minio.cluster.scanned = false;
+  await world.gladys.connect();
+  await world.app.ready;
+  t.after(() => world.app.stop());
+  world.hub.buckets.set('later', { name: 'later', sizeBytes: null, objects: null });
+  const bucket = await world.fake.sceneAction('get_bucket_status', {
+    device: bucketOf(world, 'later').device,
+  });
+  assert.equal(bucket.data.outputs.objects, -1);
+  assert.equal(bucket.data.outputs.sentence, 'Bucket later: size not known yet.');
+});
+
+test('the widget says which configuration problem stops it', async (t) => {
+  const world = await createWorld({ config: { url: BASE, access_key: ACCESS_KEY } });
+  t.after(() => world.app.stop());
+  const ack = await world.fake.widgetGet(WIDGET_KEY, { settings: {} });
+  assert.match(ack.data.content.components[0].text, /secret key/);
 });

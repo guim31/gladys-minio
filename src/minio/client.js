@@ -31,6 +31,7 @@ export const ERROR_KINDS = Object.freeze({
   AUTH: 'auth', // access key, secret key or permission refused
   NOT_MINIO: 'not_minio', // something answers, not a MinIO server
   REDIRECT: 'redirect', // the address redirects (usually HTTP to HTTPS)
+  TOO_LARGE: 'too_large', // an answer over MAX_BODY_BYTES (thousands of buckets)
   HTTP: 'http', // any other HTTP error
 });
 
@@ -59,7 +60,9 @@ const TLS_CODES = new Set([
 
 // A few thousand buckets fit: about 5 KB of metrics per bucket.
 export const MAX_BODY_BYTES = 32 * 1024 * 1024;
-export const TIMEOUT_MS = 15_000;
+// Two requests per read: 20 seconds at worst, under the 30 seconds Gladys
+// gives a widget button, an action or a scene action.
+export const TIMEOUT_MS = 10_000;
 
 /**
  * The one function that talks to the network. The client takes it as a
@@ -84,7 +87,7 @@ export function httpRequest(
       response.on('data', (chunk) => {
         size += chunk.length;
         if (size > MAX_BODY_BYTES) {
-          response.destroy(new Error('Response too large'));
+          response.destroy(Object.assign(new Error('Response too large'), { code: 'TOO_LARGE' }));
           return;
         }
         chunks.push(chunk);
@@ -136,6 +139,9 @@ export function prometheusToken(accessKey, secretKey, now = Date.now()) {
 
 /** The kind of a network failure. */
 function networkError(err) {
+  if (err.code === 'TOO_LARGE') {
+    return new MinioError(ERROR_KINDS.TOO_LARGE, 'Answer too large');
+  }
   if (TLS_CODES.has(err.code) || /certificate/i.test(err.message ?? '')) {
     return new MinioError(ERROR_KINDS.TLS, `Certificate refused (${err.code ?? err.message})`);
   }

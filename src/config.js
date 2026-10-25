@@ -32,7 +32,8 @@ export const DEFAULT_CONFIG = {
 // Pages of the MinIO console or paths of the API: a URL copied from the
 // browser or from a Prometheus job points at one of them, the API lives at the
 // root.
-const KNOWN_PATH = /\/(minio|browser|buckets|tools|identity|access-keys|settings)(\/.*)?$/i;
+const KNOWN_PATH =
+  /\/(minio\/(v2|v3|metrics|health)|browser|buckets|tools|identity|access-keys|settings)(\/.*)?$/i;
 
 /**
  * Parse the address typed by the user into a base URL: a bare host or IP

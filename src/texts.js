@@ -67,6 +67,12 @@ export const ERROR_TEXT = {
     de: 'die Adresse leitet um: Gib die https://-Adresse ein',
     es: 'la dirección redirige: introduzca la dirección https://',
   },
+  [ERROR_KINDS.TOO_LARGE]: {
+    en: 'MinIO answers too much data (thousands of buckets)',
+    fr: 'MinIO renvoie trop de données (des milliers de buckets)',
+    de: 'MinIO liefert zu viele Daten (Tausende Buckets)',
+    es: 'MinIO devuelve demasiados datos (miles de buckets)',
+  },
   [ERROR_KINDS.HTTP]: {
     en: 'unexpected answer, see the logs',
     fr: 'réponse inattendue, voir les logs',
@@ -125,24 +131,32 @@ export const ACTION_TEXT = {
 export const SENTENCE_TEXT = {
   en: {
     unreachable: 'MinIO does not answer.',
+    online: 'MinIO answers, its figures are not known yet.',
+    bucketUnknown: (name) => `Bucket ${name}: size not known yet.`,
     server: (free, percent, offline) =>
       `MinIO: ${free} free (${percent} %), ${offline} drive(s) offline.`,
     bucket: (name, size, objects) => `Bucket ${name}: ${size}, ${objects} object(s).`,
   },
   fr: {
     unreachable: 'MinIO ne répond pas.',
+    online: 'MinIO répond, ses chiffres ne sont pas encore connus.',
+    bucketUnknown: (name) => `Bucket ${name} : taille pas encore connue.`,
     server: (free, percent, offline) =>
       `MinIO : ${free} libres (${percent} %), ${offline} disque(s) hors ligne.`,
     bucket: (name, size, objects) => `Bucket ${name} : ${size}, ${objects} objet(s).`,
   },
   de: {
     unreachable: 'MinIO antwortet nicht.',
+    online: 'MinIO antwortet, seine Zahlen sind noch nicht bekannt.',
+    bucketUnknown: (name) => `Bucket ${name}: Größe noch nicht bekannt.`,
     server: (free, percent, offline) =>
       `MinIO: ${free} frei (${percent} %), ${offline} Laufwerk(e) offline.`,
     bucket: (name, size, objects) => `Bucket ${name}: ${size}, ${objects} Objekt(e).`,
   },
   es: {
     unreachable: 'MinIO no responde.',
+    online: 'MinIO responde, sus cifras aún no se conocen.',
+    bucketUnknown: (name) => `Bucket ${name}: tamaño aún no conocido.`,
     server: (free, percent, offline) =>
       `MinIO: ${free} libres (${percent} %), ${offline} disco(s) fuera de línea.`,
     bucket: (name, size, objects) => `Bucket ${name}: ${size}, ${objects} objeto(s).`,

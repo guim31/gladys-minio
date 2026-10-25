@@ -267,3 +267,8 @@ pour un MinIO plus ancien ; `bitnamilegacy/minio-client` pour `mc`, l'image Chai
   Deux disques sur quatre (EC:2) : `minio_cluster_health_status` passe à 0 et `/minio/health/cluster` répond 503.
 - **Capacité** : `usable` (après parité), comme `mc admin info`. Dans un conteneur de test, elle reflète le disque de
   l'hôte, pas la donnée stockée.
+- **Redémarrage de MinIO** (vérifié le 25/10) : dès qu'il répond, disques, nœuds et usage sont là (cache rechargé),
+  aucun disque hors ligne fantôme. Les comptes ne sont donc pas « anti-rebond » ; si une page bucket arrive quand même
+  vide alors que le cluster annonce des buckets, les buckets connus sont gardés.
+- **Panne annoncée** : `saved.down` dans `/data` ; un redémarrage de l'intégration n'annonce pas deux fois
+  « ne répond plus » et n'oublie pas « répond de nouveau ». Seul un changement d'adresse l'efface.
