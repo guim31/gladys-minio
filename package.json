@@ -1,8 +1,8 @@
 {
-  "name": "gladys-integration-template-js",
+  "name": "gladys-minio",
   "version": "1.0.0",
   "private": true,
-  "description": "Official starter template to build an external integration for Gladys Assistant with the JavaScript SDK.",
+  "description": "MinIO object storage in Gladys Assistant: capacity, drives, nodes and buckets, with scene triggers and a dashboard widget.",
   "type": "module",
   "main": "index.js",
   "scripts": {

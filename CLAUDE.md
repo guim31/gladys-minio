@@ -31,16 +31,22 @@ pushing.
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
-src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
+index.js                          SDK wiring only (src/app.js), shutdown
+src/app.js                        every SDK handler registered on the hub (the tests use it too)
+src/hub.js                        reading timer, cluster and bucket views, states, scene events, transports, status
+src/minio/client.js               MinIO metrics (v2 cluster + bucket), bearer token signed here, error kinds
+src/minio/prometheus.js           parser of the Prometheus text format
+src/devices.js                    device blueprints, feature names (4 languages), states
+src/scenes.js                     scene action handlers (manifest `scene_actions`), reading only
+src/widgets.js                    dashboard widget (manifest `widgets`)
+src/texts.js                      every text sent to Gladys outside the widget, 4 languages
+src/store.js                      /data/minio-state.json: drives and nodes offline, low space, last seen
+src/problems.js                   one log line when a repeated failure starts, one when it ends
 src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
 gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
-test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
+docs/{en,fr,de,es}.md             user documentation, re-hosted by Gladys (mandatory, same sections)
+test/                             node --test, against the SDK's fake Gladys and test/helpers/fakeMinio.js
+test/fixtures/minio/              real metrics of MinIO RELEASE.2026-10-23 (Docker)
 .github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
 ```
 
@@ -70,8 +76,9 @@ test/                             node --test, against the SDK's fake Gladys (in
   `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
   code (defaults, action, scene and widget handlers): change both sides
   together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
+- **User-facing text** exists in English, French, German ("du") and Spanish
+  ("usted"): action messages, widget, manifest texts, and `docs/{en,fr,de,es}.md`
+  with the same sections. `test/i18n.test.js` checks it.
 - **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
   in English. Tests never touch the network.
 
@@ -233,3 +240,35 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
 - Docs `en`, `fr`, `de`, `es` avec les mêmes sections.
 - Chauffe, ouverture, sécurité : ne rien rendre pilotable « comme un thermostat » ou par un assistant
   vocal quand une erreur serait dangereuse (leçon d'OctoPrint).
+
+## MinIO (propre à ce dépôt)
+
+Vérifié le 25/10/2026 sur un vrai MinIO en Docker (`cgr.dev/chainguard/minio`, RELEASE.2026-10-23 construit depuis
+les sources : les images `minio/minio` de Docker Hub et de quay.io ne se tirent plus ; `bitnamilegacy/minio` 2025-05
+pour un MinIO plus ancien ; `bitnamilegacy/minio-client` pour `mc`, l'image Chainguard du client n'a pas de shell).
+
+- **API retenue** : les métriques Prometheus **v2**, `/minio/v2/metrics/cluster` et `/minio/v2/metrics/bucket`.
+  L'API d'administration (`/minio/admin/v3/info`, SigV4) n'apporte que le nom du disque perdu : écartée. Les métriques
+  v3 (`/minio/metrics/v3/...`) refusent un jeton généré pour la v2 (403) : ne pas mélanger.
+- **Jeton** : JWT HS512 `{"iss":"prometheus","sub":<access key>,"exp":…}` signé avec la clé secrète, exactement ce que
+  produit `mc admin prometheus generate` (test octet pour octet dans `test/client.test.js`). L'utilisateur a besoin
+  du droit `admin:Prometheus` seulement. MinIO répond 403 `AccessDenied` aussi bien pour une mauvaise clé que pour un
+  droit manquant. Sans clé : `MINIO_PROMETHEUS_AUTH_TYPE=public`.
+- **Cache de MinIO** : disques, nœuds et capacité sont recalculés en arrière-plan, environ une minute de retard (un
+  nœud arrêté apparaît après 40 à 70 s). Les objets et tailles (`minio_cluster_usage_*`, `minio_bucket_usage_*`)
+  viennent du scanner : absents sur un serveur neuf jusqu'à son premier passage (une à deux minutes), puis en retard.
+  Le code traite leur absence comme « inconnu », jamais comme 0.
+- **Page bucket vide** : sans bucket (ou avant le scanner), `/minio/v2/metrics/bucket` ne contient aucune métrique
+  `minio_` ; seule la page cluster prouve qu'on parle à MinIO.
+- **Cluster** : chaque nœud répond pour tout le cluster, mais si le nœud lu s'arrête, MinIO « ne répond plus ».
+  Un nœud arrêté compte aussi son disque : `drive_offline` et `node_offline` partent ensemble (documenté).
+- **Disque perdu sur un serveur seul** : `chmod 000` d'un dossier de disque le met hors ligne en une minute ; le
+  renommer ne suffit pas, MinIO recrée le dossier et le répare aussitôt (healing de quelques secondes, invisible).
+  Deux disques sur quatre (EC:2) : `minio_cluster_health_status` passe à 0 et `/minio/health/cluster` répond 503.
+- **Capacité** : `usable` (après parité), comme `mc admin info`. Dans un conteneur de test, elle reflète le disque de
+  l'hôte, pas la donnée stockée.
+- **Redémarrage de MinIO** (vérifié le 25/10) : dès qu'il répond, disques, nœuds et usage sont là (cache rechargé),
+  aucun disque hors ligne fantôme. Les comptes ne sont donc pas « anti-rebond » ; si une page bucket arrive quand même
+  vide alors que le cluster annonce des buckets, les buckets connus sont gardés.
+- **Panne annoncée** : `saved.down` dans `/data` ; un redémarrage de l'intégration n'annonce pas deux fois
+  « ne répond plus » et n'oublie pas « répond de nouveau ». Seul un changement d'adresse l'efface.

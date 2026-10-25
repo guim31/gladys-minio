@@ -1,177 +1,966 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "MinIO",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "Your MinIO storage in Gladys: free space, drives, buckets, and an alert when a drive is lost.",
+    "fr": "Votre stockage MinIO dans Gladys : espace libre, disques, buckets, et une alerte si un disque tombe.",
+    "de": "Dein MinIO-Speicher in Gladys: freier Platz, Laufwerke, Buckets und ein Alarm bei Laufwerksausfall.",
+    "es": "Su almacenamiento MinIO en Gladys: espacio libre, discos, buckets y una alerta si cae un disco."
   },
   "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
+  "docker_image": "ghcr.io/guim31/gladys-minio:1.0.0",
   "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "cover_image": "https://raw.githubusercontent.com/guim31/gladys-minio/main/cover.png",
+  "categories": ["servers"],
+  "transports": ["local"],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": {
+        "en": "Your MinIO server",
+        "fr": "Votre serveur MinIO",
+        "de": "Dein MinIO-Server",
+        "es": "Su servidor MinIO"
+      },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "A MinIO server or cluster. Enter the address of its API and the keys of a user allowed to read its metrics, then add the server and the buckets to follow from the Discover tab.",
+        "fr": "Un serveur ou un cluster MinIO. Saisissez l'adresse de son API et les clés d'un utilisateur autorisé à lire ses métriques, puis ajoutez le serveur et les buckets à suivre depuis l'onglet Découverte.",
+        "de": "Ein MinIO-Server oder -Cluster. Gib die Adresse seiner API und die Schlüssel eines Benutzers ein, der seine Metriken lesen darf, und lege dann Server und Buckets im Tab „Entdecken“ an.",
+        "es": "Un servidor o clúster MinIO. Introduzca la dirección de su API y las claves de un usuario autorizado a leer sus métricas, y después añada el servidor y los buckets desde la pestaña Descubrir."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://github.com/guim31/gladys-minio/blob/main/docs/en.md",
+          "label": {
+            "en": "Setup guide",
+            "fr": "Guide d'installation",
+            "de": "Einrichtungsanleitung",
+            "es": "Guía de instalación"
+          }
+        },
+        {
+          "url": "https://docs.min.io/community/minio-object-store/operations/monitoring/collect-minio-metrics-using-prometheus.html",
+          "label": {
+            "en": "MinIO metrics documentation",
+            "fr": "Documentation des métriques MinIO",
+            "de": "MinIO-Metriken-Dokumentation",
+            "es": "Documentación de métricas de MinIO"
+          }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
-      "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
+      "key": "url",
+      "type": "string",
+      "label": {
+        "en": "MinIO address",
+        "fr": "Adresse de MinIO",
+        "de": "MinIO-Adresse",
+        "es": "Dirección de MinIO"
       },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
+      "description": {
+        "en": "The address of the S3 API (port 9000 by default), not the one of the console. https:// if the server uses TLS.",
+        "fr": "L'adresse de l'API S3 (port 9000 par défaut), pas celle de la console. En https:// si le serveur utilise TLS.",
+        "de": "Die Adresse der S3-API (standardmäßig Port 9000), nicht die der Konsole. https://, wenn der Server TLS nutzt.",
+        "es": "La dirección de la API S3 (puerto 9000 por defecto), no la de la consola. https:// si el servidor usa TLS."
+      },
+      "placeholder": {
+        "en": "e.g. http://192.168.1.2:9000",
+        "fr": "ex. http://192.168.1.2:9000",
+        "de": "z. B. http://192.168.1.2:9000",
+        "es": "p. ej. http://192.168.1.2:9000"
+      },
+      "required": true
     },
     {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
-      "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
+      "key": "access_key",
+      "type": "string",
+      "label": {
+        "en": "Access key",
+        "fr": "Clé d'accès",
+        "de": "Zugriffsschlüssel",
+        "es": "Clave de acceso"
       },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
+      "description": {
+        "en": "Of a user with the admin:Prometheus permission (see the guide). Empty if the metrics are public (MINIO_PROMETHEUS_AUTH_TYPE=public).",
+        "fr": "D'un utilisateur qui a le droit admin:Prometheus (voir le guide). Vide si les métriques sont publiques (MINIO_PROMETHEUS_AUTH_TYPE=public).",
+        "de": "Eines Benutzers mit dem Recht admin:Prometheus (siehe Anleitung). Leer, wenn die Metriken öffentlich sind (MINIO_PROMETHEUS_AUTH_TYPE=public).",
+        "es": "De un usuario con el permiso admin:Prometheus (vea la guía). Vacío si las métricas son públicas (MINIO_PROMETHEUS_AUTH_TYPE=public)."
+      },
+      "required": false
     },
     {
-      "key": "unit",
-      "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
+      "key": "secret_key",
+      "type": "secret",
+      "label": {
+        "en": "Secret key",
+        "fr": "Clé secrète",
+        "de": "Geheimer Schlüssel",
+        "es": "Clave secreta"
+      },
+      "description": {
+        "en": "The secret key of this user. It never leaves the integration: it signs the metrics requests.",
+        "fr": "La clé secrète de cet utilisateur. Elle ne quitte jamais l'intégration : elle signe les requêtes de métriques.",
+        "de": "Der geheime Schlüssel dieses Benutzers. Er verlässt die Integration nie: Er signiert die Metrik-Anfragen.",
+        "es": "La clave secreta de este usuario. Nunca sale de la integración: firma las peticiones de métricas."
+      },
+      "required": false
+    },
+    {
+      "key": "accept_self_signed",
+      "type": "boolean",
+      "label": {
+        "en": "Accept a self-signed certificate",
+        "fr": "Accepter un certificat auto-signé",
+        "de": "Selbstsigniertes Zertifikat akzeptieren",
+        "es": "Aceptar un certificado autofirmado"
+      },
+      "description": {
+        "en": "Only for an https:// address whose certificate is not signed by a known authority.",
+        "fr": "Seulement pour une adresse en https:// dont le certificat n'est pas signé par une autorité connue.",
+        "de": "Nur für eine https://-Adresse, deren Zertifikat nicht von einer bekannten Stelle signiert ist.",
+        "es": "Solo para una dirección https:// cuyo certificado no está firmado por una autoridad conocida."
+      },
       "required": false,
-      "default": "celsius",
+      "default": false
+    },
+    {
+      "key": "options",
+      "type": "section",
+      "label": {
+        "en": "Options",
+        "fr": "Options",
+        "de": "Optionen",
+        "es": "Opciones"
+      }
+    },
+    {
+      "key": "poll_interval",
+      "type": "select",
+      "label": {
+        "en": "Refresh interval",
+        "fr": "Intervalle de rafraîchissement",
+        "de": "Aktualisierungsintervall",
+        "es": "Intervalo de actualización"
+      },
+      "description": {
+        "en": "How often the metrics are read. MinIO itself refreshes the drives and the capacity about once a minute.",
+        "fr": "À quelle fréquence les métriques sont lues. MinIO rafraîchit lui-même les disques et la capacité environ une fois par minute.",
+        "de": "Wie oft die Metriken gelesen werden. MinIO selbst aktualisiert Laufwerke und Kapazität etwa einmal pro Minute.",
+        "es": "Con qué frecuencia se leen las métricas. MinIO actualiza los discos y la capacidad aproximadamente una vez por minuto."
+      },
+      "required": false,
+      "default": "60",
       "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
+        {
+          "value": "30",
+          "label": {
+            "en": "30 seconds",
+            "fr": "30 secondes",
+            "de": "30 Sekunden",
+            "es": "30 segundos"
+          }
+        },
+        {
+          "value": "60",
+          "label": {
+            "en": "1 minute",
+            "fr": "1 minute",
+            "de": "1 Minute",
+            "es": "1 minuto"
+          }
+        },
+        {
+          "value": "300",
+          "label": {
+            "en": "5 minutes",
+            "fr": "5 minutes",
+            "de": "5 Minuten",
+            "es": "5 minutos"
+          }
+        },
+        {
+          "value": "900",
+          "label": {
+            "en": "15 minutes",
+            "fr": "15 minutes",
+            "de": "15 Minuten",
+            "es": "15 minutos"
+          }
+        }
       ]
     },
     {
-      "key": "poll_frequency",
+      "key": "low_space_percent",
       "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
+      "label": {
+        "en": "Low free space threshold (%)",
+        "fr": "Seuil d'espace libre bas (%)",
+        "de": "Schwelle für wenig freien Speicher (%)",
+        "es": "Umbral de poco espacio libre (%)"
+      },
       "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
+        "en": "The scene trigger \"MinIO free space low\" fires when the free space goes under this percentage of the usable capacity.",
+        "fr": "Le déclencheur « Espace libre MinIO bas » se déclenche quand l'espace libre passe sous ce pourcentage de la capacité utilisable.",
+        "de": "Der Auslöser „Wenig freier Speicher in MinIO“ reagiert, wenn der freie Speicher unter diesen Anteil der nutzbaren Kapazität fällt.",
+        "es": "El disparador «Poco espacio libre en MinIO» se activa cuando el espacio libre baja de este porcentaje de la capacidad utilizable."
       },
       "required": false,
-      "default": 300,
-      "min": 60,
-      "max": 3600
+      "default": 10,
+      "min": 1,
+      "max": 90
+    },
+    {
+      "key": "language",
+      "type": "select",
+      "label": {
+        "en": "Language of the names",
+        "fr": "Langue des noms",
+        "de": "Sprache der Namen",
+        "es": "Idioma de los nombres"
+      },
+      "description": {
+        "en": "Language of the feature names and of the texts sent by the integration (scene actions, triggers).",
+        "fr": "Langue des noms de fonctionnalités et des textes envoyés par l'intégration (actions de scène, déclencheurs).",
+        "de": "Sprache der Funktionsnamen und der von der Integration gesendeten Texte (Szenenaktionen, Auslöser).",
+        "es": "Idioma de los nombres de las funciones y de los textos enviados por la integración (acciones de escena, disparadores)."
+      },
+      "required": false,
+      "default": "fr",
+      "options": [
+        {
+          "value": "en",
+          "label": {
+            "en": "English",
+            "fr": "Anglais",
+            "de": "Englisch",
+            "es": "Inglés"
+          }
+        },
+        {
+          "value": "fr",
+          "label": {
+            "en": "French",
+            "fr": "Français",
+            "de": "Französisch",
+            "es": "Francés"
+          }
+        },
+        {
+          "value": "de",
+          "label": {
+            "en": "German",
+            "fr": "Allemand",
+            "de": "Deutsch",
+            "es": "Alemán"
+          }
+        },
+        {
+          "value": "es",
+          "label": {
+            "en": "Spanish",
+            "fr": "Espagnol",
+            "de": "Spanisch",
+            "es": "Español"
+          }
+        }
+      ]
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
+      "key": "test_connection",
+      "label": {
+        "en": "Test the connection",
+        "fr": "Tester la connexion",
+        "de": "Verbindung testen",
+        "es": "Probar la conexión"
+      },
       "timeout_seconds": 30
-    },
-    {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ]
     }
   ],
   "scene_triggers": [
     {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
-      "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
+      "key": "server_unreachable",
+      "label": {
+        "en": "MinIO no longer answers",
+        "fr": "MinIO ne répond plus",
+        "de": "MinIO antwortet nicht mehr",
+        "es": "MinIO ya no responde"
       },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
-        },
-        {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
-          "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
-          ]
-        }
-      ],
+      "description": {
+        "en": "The MinIO server stopped answering (two reads in a row).",
+        "fr": "Le serveur MinIO ne répond plus (deux lectures de suite).",
+        "de": "Der MinIO-Server antwortet nicht mehr (zwei Abfragen in Folge).",
+        "es": "El servidor MinIO ha dejado de responder (dos lecturas seguidas)."
+      },
       "variables": [
         {
-          "key": "target",
+          "key": "server",
           "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
+          "label": {
+            "en": "Server address",
+            "fr": "Adresse du serveur",
+            "de": "Adresse des Servers",
+            "es": "Dirección del servidor"
+          }
+        },
+        {
+          "key": "error",
+          "type": "string",
+          "label": {
+            "en": "Reason",
+            "fr": "Raison",
+            "de": "Grund",
+            "es": "Motivo"
+          }
+        }
+      ]
+    },
+    {
+      "key": "server_recovered",
+      "label": {
+        "en": "MinIO answers again",
+        "fr": "MinIO répond de nouveau",
+        "de": "MinIO antwortet wieder",
+        "es": "MinIO vuelve a responder"
+      },
+      "description": {
+        "en": "The MinIO server that no longer answered is back.",
+        "fr": "Le serveur MinIO qui ne répondait plus est de retour.",
+        "de": "Der MinIO-Server, der nicht mehr antwortete, ist wieder da.",
+        "es": "El servidor MinIO que no respondía ha vuelto."
+      },
+      "variables": [
+        {
+          "key": "server",
+          "type": "string",
+          "label": {
+            "en": "Server address",
+            "fr": "Adresse du serveur",
+            "de": "Adresse des Servers",
+            "es": "Dirección del servidor"
+          }
+        },
+        {
+          "key": "downtime_minutes",
+          "type": "number",
+          "label": {
+            "en": "Downtime (minutes)",
+            "fr": "Durée de l'interruption (minutes)",
+            "de": "Ausfallzeit (Minuten)",
+            "es": "Tiempo de caída (minutos)"
+          }
+        }
+      ]
+    },
+    {
+      "key": "drive_offline",
+      "label": {
+        "en": "MinIO drive offline",
+        "fr": "Disque MinIO hors ligne",
+        "de": "MinIO-Laufwerk offline",
+        "es": "Disco de MinIO fuera de línea"
+      },
+      "description": {
+        "en": "More drives are offline than at the previous read: a drive failed, or a whole node.",
+        "fr": "Plus de disques sont hors ligne qu'à la lecture précédente : un disque est tombé, ou un nœud entier.",
+        "de": "Mehr Laufwerke sind offline als bei der letzten Abfrage: Ein Laufwerk ist ausgefallen, oder ein ganzer Knoten.",
+        "es": "Hay más discos fuera de línea que en la lectura anterior: ha fallado un disco, o un nodo entero."
+      },
+      "variables": [
+        {
+          "key": "server",
+          "type": "string",
+          "label": {
+            "en": "Server address",
+            "fr": "Adresse du serveur",
+            "de": "Adresse des Servers",
+            "es": "Dirección del servidor"
+          }
+        },
+        {
+          "key": "drives_offline",
+          "type": "number",
+          "label": {
+            "en": "Drives offline",
+            "fr": "Disques hors ligne",
+            "de": "Laufwerke offline",
+            "es": "Discos fuera de línea"
+          }
+        },
+        {
+          "key": "drives_online",
+          "type": "number",
+          "label": {
+            "en": "Drives online",
+            "fr": "Disques en ligne",
+            "de": "Laufwerke online",
+            "es": "Discos en línea"
+          }
+        },
+        {
+          "key": "nodes_offline",
+          "type": "number",
+          "label": {
+            "en": "Nodes offline",
+            "fr": "Nœuds hors ligne",
+            "de": "Knoten offline",
+            "es": "Nodos fuera de línea"
+          }
+        },
+        {
+          "key": "nodes_online",
+          "type": "number",
+          "label": {
+            "en": "Nodes online",
+            "fr": "Nœuds en ligne",
+            "de": "Knoten online",
+            "es": "Nodos en línea"
+          }
+        }
+      ]
+    },
+    {
+      "key": "drive_recovered",
+      "label": {
+        "en": "MinIO drive back online",
+        "fr": "Disque MinIO revenu",
+        "de": "MinIO-Laufwerk wieder online",
+        "es": "Disco de MinIO de nuevo en línea"
+      },
+      "description": {
+        "en": "Fewer drives are offline than at the previous read.",
+        "fr": "Moins de disques sont hors ligne qu'à la lecture précédente.",
+        "de": "Weniger Laufwerke sind offline als bei der letzten Abfrage.",
+        "es": "Hay menos discos fuera de línea que en la lectura anterior."
+      },
+      "variables": [
+        {
+          "key": "server",
+          "type": "string",
+          "label": {
+            "en": "Server address",
+            "fr": "Adresse du serveur",
+            "de": "Adresse des Servers",
+            "es": "Dirección del servidor"
+          }
+        },
+        {
+          "key": "drives_offline",
+          "type": "number",
+          "label": {
+            "en": "Drives offline",
+            "fr": "Disques hors ligne",
+            "de": "Laufwerke offline",
+            "es": "Discos fuera de línea"
+          }
+        },
+        {
+          "key": "drives_online",
+          "type": "number",
+          "label": {
+            "en": "Drives online",
+            "fr": "Disques en ligne",
+            "de": "Laufwerke online",
+            "es": "Discos en línea"
+          }
+        },
+        {
+          "key": "nodes_offline",
+          "type": "number",
+          "label": {
+            "en": "Nodes offline",
+            "fr": "Nœuds hors ligne",
+            "de": "Knoten offline",
+            "es": "Nodos fuera de línea"
+          }
+        },
+        {
+          "key": "nodes_online",
+          "type": "number",
+          "label": {
+            "en": "Nodes online",
+            "fr": "Nœuds en ligne",
+            "de": "Knoten online",
+            "es": "Nodos en línea"
+          }
+        }
+      ]
+    },
+    {
+      "key": "node_offline",
+      "label": {
+        "en": "MinIO node offline",
+        "fr": "Nœud MinIO hors ligne",
+        "de": "MinIO-Knoten offline",
+        "es": "Nodo de MinIO fuera de línea"
+      },
+      "description": {
+        "en": "More nodes of the cluster are offline than at the previous read.",
+        "fr": "Plus de nœuds du cluster sont hors ligne qu'à la lecture précédente.",
+        "de": "Mehr Knoten des Clusters sind offline als bei der letzten Abfrage.",
+        "es": "Hay más nodos del clúster fuera de línea que en la lectura anterior."
+      },
+      "variables": [
+        {
+          "key": "server",
+          "type": "string",
+          "label": {
+            "en": "Server address",
+            "fr": "Adresse du serveur",
+            "de": "Adresse des Servers",
+            "es": "Dirección del servidor"
+          }
+        },
+        {
+          "key": "drives_offline",
+          "type": "number",
+          "label": {
+            "en": "Drives offline",
+            "fr": "Disques hors ligne",
+            "de": "Laufwerke offline",
+            "es": "Discos fuera de línea"
+          }
+        },
+        {
+          "key": "drives_online",
+          "type": "number",
+          "label": {
+            "en": "Drives online",
+            "fr": "Disques en ligne",
+            "de": "Laufwerke online",
+            "es": "Discos en línea"
+          }
+        },
+        {
+          "key": "nodes_offline",
+          "type": "number",
+          "label": {
+            "en": "Nodes offline",
+            "fr": "Nœuds hors ligne",
+            "de": "Knoten offline",
+            "es": "Nodos fuera de línea"
+          }
+        },
+        {
+          "key": "nodes_online",
+          "type": "number",
+          "label": {
+            "en": "Nodes online",
+            "fr": "Nœuds en ligne",
+            "de": "Knoten online",
+            "es": "Nodos en línea"
+          }
+        }
+      ]
+    },
+    {
+      "key": "node_recovered",
+      "label": {
+        "en": "MinIO node back online",
+        "fr": "Nœud MinIO revenu",
+        "de": "MinIO-Knoten wieder online",
+        "es": "Nodo de MinIO de nuevo en línea"
+      },
+      "description": {
+        "en": "Fewer nodes of the cluster are offline than at the previous read.",
+        "fr": "Moins de nœuds du cluster sont hors ligne qu'à la lecture précédente.",
+        "de": "Weniger Knoten des Clusters sind offline als bei der letzten Abfrage.",
+        "es": "Hay menos nodos del clúster fuera de línea que en la lectura anterior."
+      },
+      "variables": [
+        {
+          "key": "server",
+          "type": "string",
+          "label": {
+            "en": "Server address",
+            "fr": "Adresse du serveur",
+            "de": "Adresse des Servers",
+            "es": "Dirección del servidor"
+          }
+        },
+        {
+          "key": "drives_offline",
+          "type": "number",
+          "label": {
+            "en": "Drives offline",
+            "fr": "Disques hors ligne",
+            "de": "Laufwerke offline",
+            "es": "Discos fuera de línea"
+          }
+        },
+        {
+          "key": "drives_online",
+          "type": "number",
+          "label": {
+            "en": "Drives online",
+            "fr": "Disques en ligne",
+            "de": "Laufwerke online",
+            "es": "Discos en línea"
+          }
+        },
+        {
+          "key": "nodes_offline",
+          "type": "number",
+          "label": {
+            "en": "Nodes offline",
+            "fr": "Nœuds hors ligne",
+            "de": "Knoten offline",
+            "es": "Nodos fuera de línea"
+          }
+        },
+        {
+          "key": "nodes_online",
+          "type": "number",
+          "label": {
+            "en": "Nodes online",
+            "fr": "Nœuds en ligne",
+            "de": "Knoten online",
+            "es": "Nodos en línea"
+          }
+        }
+      ]
+    },
+    {
+      "key": "low_free_space",
+      "label": {
+        "en": "MinIO free space low",
+        "fr": "Espace libre MinIO bas",
+        "de": "Wenig freier Speicher in MinIO",
+        "es": "Poco espacio libre en MinIO"
+      },
+      "description": {
+        "en": "The free space went under the threshold of the configuration. Fires again once it went back above it.",
+        "fr": "L'espace libre est passé sous le seuil de la configuration. Se déclenche de nouveau une fois repassé au-dessus.",
+        "de": "Der freie Speicher ist unter die Schwelle der Konfiguration gefallen. Löst erneut aus, nachdem er wieder darüber lag.",
+        "es": "El espacio libre ha bajado del umbral de la configuración. Se vuelve a activar cuando ha vuelto a superarlo."
+      },
+      "variables": [
+        {
+          "key": "server",
+          "type": "string",
+          "label": {
+            "en": "Server address",
+            "fr": "Adresse du serveur",
+            "de": "Adresse des Servers",
+            "es": "Dirección del servidor"
+          }
+        },
+        {
+          "key": "free_percent",
+          "type": "number",
+          "label": {
+            "en": "Free space (%)",
+            "fr": "Espace libre (%)",
+            "de": "Freier Speicher (%)",
+            "es": "Espacio libre (%)"
+          }
+        },
+        {
+          "key": "free_space",
+          "type": "string",
+          "label": {
+            "en": "Free space",
+            "fr": "Espace libre",
+            "de": "Freier Speicher",
+            "es": "Espacio libre"
+          }
+        },
+        {
+          "key": "threshold",
+          "type": "number",
+          "label": {
+            "en": "Threshold (%)",
+            "fr": "Seuil (%)",
+            "de": "Schwelle (%)",
+            "es": "Umbral (%)"
+          }
         }
       ]
     }
   ],
   "scene_actions": [
     {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
+      "key": "get_server_status",
+      "label": {
+        "en": "State of MinIO",
+        "fr": "État de MinIO",
+        "de": "Zustand von MinIO",
+        "es": "Estado de MinIO"
       },
-      "timeout_seconds": 15,
+      "description": {
+        "en": "Reads MinIO for the next actions: online, free space, drives, objects, and a ready-made sentence.",
+        "fr": "Lit MinIO pour les actions suivantes : en ligne, espace libre, disques, objets, et une phrase toute prête.",
+        "de": "Liest MinIO für die nächsten Aktionen: online, freier Speicher, Laufwerke, Objekte und einen fertigen Satz.",
+        "es": "Lee MinIO para las siguientes acciones: en línea, espacio libre, discos, objetos y una frase lista."
+      },
+      "timeout_seconds": 30,
+      "outputs": [
+        {
+          "key": "online",
+          "type": "boolean",
+          "label": {
+            "en": "Online",
+            "fr": "En ligne",
+            "de": "Online",
+            "es": "En línea"
+          }
+        },
+        {
+          "key": "healthy",
+          "type": "boolean",
+          "label": {
+            "en": "Healthy (write quorum)",
+            "fr": "En bonne santé (quorum)",
+            "de": "Gesund (Schreib-Quorum)",
+            "es": "En buen estado (quórum)"
+          }
+        },
+        {
+          "key": "version",
+          "type": "string",
+          "label": {
+            "en": "Version",
+            "fr": "Version",
+            "de": "Version",
+            "es": "Versión"
+          }
+        },
+        {
+          "key": "free_percent",
+          "type": "number",
+          "label": {
+            "en": "Free space (%)",
+            "fr": "Espace libre (%)",
+            "de": "Freier Speicher (%)",
+            "es": "Espacio libre (%)"
+          }
+        },
+        {
+          "key": "free_space",
+          "type": "string",
+          "label": {
+            "en": "Free space",
+            "fr": "Espace libre",
+            "de": "Freier Speicher",
+            "es": "Espacio libre"
+          }
+        },
+        {
+          "key": "used_space",
+          "type": "string",
+          "label": {
+            "en": "Data stored",
+            "fr": "Données stockées",
+            "de": "Gespeicherte Daten",
+            "es": "Datos almacenados"
+          }
+        },
+        {
+          "key": "total_space",
+          "type": "string",
+          "label": {
+            "en": "Usable capacity",
+            "fr": "Capacité utilisable",
+            "de": "Nutzbare Kapazität",
+            "es": "Capacidad utilizable"
+          }
+        },
+        {
+          "key": "objects",
+          "type": "number",
+          "label": {
+            "en": "Objects",
+            "fr": "Objets",
+            "de": "Objekte",
+            "es": "Objetos"
+          }
+        },
+        {
+          "key": "buckets",
+          "type": "number",
+          "label": {
+            "en": "Buckets",
+            "fr": "Buckets",
+            "de": "Buckets",
+            "es": "Buckets"
+          }
+        },
+        {
+          "key": "drives_online",
+          "type": "number",
+          "label": {
+            "en": "Drives online",
+            "fr": "Disques en ligne",
+            "de": "Laufwerke online",
+            "es": "Discos en línea"
+          }
+        },
+        {
+          "key": "drives_offline",
+          "type": "number",
+          "label": {
+            "en": "Drives offline",
+            "fr": "Disques hors ligne",
+            "de": "Laufwerke offline",
+            "es": "Discos fuera de línea"
+          }
+        },
+        {
+          "key": "nodes_offline",
+          "type": "number",
+          "label": {
+            "en": "Nodes offline",
+            "fr": "Nœuds hors ligne",
+            "de": "Knoten offline",
+            "es": "Nodos fuera de línea"
+          }
+        },
+        {
+          "key": "healing_drives",
+          "type": "number",
+          "label": {
+            "en": "Drives healing",
+            "fr": "Disques en réparation",
+            "de": "Laufwerke in Heilung",
+            "es": "Discos en reparación"
+          }
+        },
+        {
+          "key": "sentence",
+          "type": "string",
+          "label": {
+            "en": "Sentence",
+            "fr": "Phrase",
+            "de": "Satz",
+            "es": "Frase"
+          }
+        }
+      ]
+    },
+    {
+      "key": "get_bucket_status",
+      "label": {
+        "en": "State of a bucket",
+        "fr": "État d'un bucket",
+        "de": "Zustand eines Buckets",
+        "es": "Estado de un bucket"
+      },
+      "description": {
+        "en": "Reads the size and the objects of a MinIO bucket for the next actions, and a ready-made sentence.",
+        "fr": "Lit la taille et les objets d'un bucket MinIO pour les actions suivantes, et une phrase toute prête.",
+        "de": "Liest Größe und Objekte eines MinIO-Buckets für die nächsten Aktionen und einen fertigen Satz.",
+        "es": "Lee el tamaño y los objetos de un bucket de MinIO para las siguientes acciones, y una frase lista."
+      },
+      "timeout_seconds": 30,
       "fields": [
         {
           "key": "device",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
+          "label": {
+            "en": "Bucket",
+            "fr": "Bucket",
+            "de": "Bucket",
+            "es": "Bucket"
+          },
           "required": true
         }
       ],
       "outputs": [
         {
-          "key": "signalled",
-          "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
+          "key": "name",
+          "type": "string",
+          "label": {
+            "en": "Bucket",
+            "fr": "Bucket",
+            "de": "Bucket",
+            "es": "Bucket"
+          }
+        },
+        {
+          "key": "size",
+          "type": "string",
+          "label": {
+            "en": "Size",
+            "fr": "Taille",
+            "de": "Größe",
+            "es": "Tamaño"
+          }
+        },
+        {
+          "key": "size_mb",
+          "type": "number",
+          "label": {
+            "en": "Size (MB)",
+            "fr": "Taille (Mo)",
+            "de": "Größe (MB)",
+            "es": "Tamaño (MB)"
+          }
+        },
+        {
+          "key": "objects",
+          "type": "number",
+          "label": {
+            "en": "Objects",
+            "fr": "Objets",
+            "de": "Objekte",
+            "es": "Objetos"
+          }
+        },
+        {
+          "key": "sentence",
+          "type": "string",
+          "label": {
+            "en": "Sentence",
+            "fr": "Phrase",
+            "de": "Satz",
+            "es": "Frase"
+          }
         }
       ]
     }
   ],
   "widgets": [
     {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
-      "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
+      "key": "minio",
+      "label": {
+        "en": "MinIO",
+        "fr": "MinIO",
+        "de": "MinIO",
+        "es": "MinIO"
       },
-      "icon": "activity",
-      "action_timeout_seconds": 15
+      "description": {
+        "en": "Capacity used, free space, drives offline, then the buckets, the largest first.",
+        "fr": "Capacité utilisée, espace libre, disques hors ligne, puis les buckets, les plus gros d'abord.",
+        "de": "Belegte Kapazität, freier Speicher, Laufwerke offline, dann die Buckets, die größten zuerst.",
+        "es": "Capacidad usada, espacio libre, discos desconectados y los buckets, los mayores primero."
+      },
+      "icon": "database",
+      "action_timeout_seconds": 30,
+      "settings": [
+        {
+          "key": "buckets",
+          "type": "multi_select",
+          "source": "devices",
+          "label": {
+            "en": "Buckets (empty: all)",
+            "fr": "Buckets (vide : tous)",
+            "de": "Buckets (leer: alle)",
+            "es": "Buckets (vacío: todos)"
+          },
+          "description": {
+            "en": "Empty: every bucket of the server. Only the devices added to Gladys can be chosen.",
+            "fr": "Vide : tous les buckets du serveur. Seuls les appareils ajoutés à Gladys peuvent être choisis.",
+            "de": "Leer: alle Buckets des Servers. Nur die in Gladys angelegten Geräte sind wählbar.",
+            "es": "Vacío: todos los buckets del servidor. Solo se pueden elegir los dispositivos añadidos a Gladys."
+          },
+          "required": false
+        }
+      ]
     }
   ]
 }
